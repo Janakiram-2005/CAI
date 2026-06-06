@@ -59,7 +59,7 @@ export function RobotAvatar({ state, size = 52 }: RobotAvatarProps) {
     >
       {/* Antenna */}
       <line x1="32" y1="4" x2="32" y2="12" stroke={antennaColor} strokeWidth="2" strokeLinecap="round" />
-      <circle cx="32" cy="3" r="2.5" fill={antennaColor} />
+      <circle className="robot-antenna-tip" cx="32" cy="3" r="2.5" fill={antennaColor} />
 
       {/* Head */}
       <rect x="10" y="12" width="44" height="32" rx="8" ry="8"
@@ -78,8 +78,15 @@ export function RobotAvatar({ state, size = 52 }: RobotAvatarProps) {
 
       {/* Mouth — static unless speaking */}
       {state !== 'speaking' && (
-        <rect x="18" y="36" width="28" height="3" rx="1.5"
-          fill={state === 'listening' ? '#818cf8' : state === 'thinking' ? '#a855f7' : '#4b5563'} />
+        <rect
+          className={state === 'listening' ? 'listening-mouth-wave' : ''}
+          x="18"
+          y="36"
+          width="28"
+          height="3"
+          rx="1.5"
+          fill={state === 'listening' ? '#818cf8' : state === 'thinking' ? '#a855f7' : '#4b5563'}
+        />
       )}
 
       {/* Mouth waveform bars — speaking state only */}

@@ -157,10 +157,39 @@
   95%           { transform: scaleY(0.1); }
 }
 
-.state-idle .robot-eye,
-.state-listening .robot-eye {
+.state-idle .robot-eye {
   fill: #0ea5e9;
   animation: eye-blink 4s ease-in-out infinite;
+}
+
+.state-listening .robot-eye {
+  fill: #22d3ee;
+  animation: listening-eyes-glow 1.2s ease-in-out infinite;
+}
+
+.state-listening .robot-antenna-tip {
+  animation: antenna-pulse 0.8s ease-in-out infinite;
+  transform-origin: 32px 3px;
+}
+
+.state-listening .listening-mouth-wave {
+  animation: listening-mouth 1s ease-in-out infinite;
+  transform-origin: 32px 37.5px;
+}
+
+@keyframes listening-eyes-glow {
+  0%, 100% { filter: drop-shadow(0 0 2px #22d3ee); transform: scale(1); }
+  50% { filter: drop-shadow(0 0 8px #22d3ee); transform: scale(1.15); }
+}
+
+@keyframes antenna-pulse {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 1px #818cf8); }
+  50% { transform: scale(1.6); filter: drop-shadow(0 0 6px #22d3ee); }
+}
+
+@keyframes listening-mouth {
+  0%, 100% { transform: scaleY(1); opacity: 0.6; }
+  50% { transform: scaleY(3.5); opacity: 1; fill: #22d3ee; }
 }
 
 .state-thinking .robot-eye {

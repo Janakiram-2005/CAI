@@ -336,18 +336,19 @@ function VoiceAvatarInner({ settings }: { settings: any }) {
     }
   }, [inputMode, stopListening]);
 
-  const isActivelyListening = () => avatarState === 'listening' || avatarState === 'confirming';
-
-  const toggleListening = useCallback(() => {
-    if (avatarState === 'idle') {
+  const toggleListening = useCallback(async () => {
+    const active = isListening ? isListening() : false;
+    if (active) {
+      stopListening(true);
+    } else {
+      stopTTS();
+      if (agentStatus === StatusEnum.RUNNING || agentStatus === StatusEnum.CALL_USER) {
+        await api.stopRun().catch(() => {});
+      }
       setExpanded(true);
       startListening();
-    } else if (avatarState === 'listening' || avatarState === 'confirming') {
-      stopListening(true);
-    } else if (avatarState === 'speaking') {
-      stopTTS();
     }
-  }, [avatarState, startListening, stopListening, stopTTS, setExpanded]);
+  }, [isListening, startListening, stopListening, stopTTS, agentStatus, setExpanded]);
 
   // ─── Hotkey listener from main process ───────────────────────────────────
   useEffect(() => {
@@ -500,7 +501,7 @@ function VoiceAvatarInner({ settings }: { settings: any }) {
             onResumeTTS={resumeTTS}
             onPlayLast={handlePlayLast}
             onToggleMic={toggleListening}
-            isListening={isActivelyListening()}
+            isListening={isListening ? isListening() : false}
             onSendText={handleCommit}
           />
         )}
