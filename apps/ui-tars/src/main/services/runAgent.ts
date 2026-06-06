@@ -48,13 +48,13 @@ import { UITarsModel, type UITarsModelConfig, type InvokeParams } from '@ui-tars
 import { registerCallUserTimer, cancelCallUserTimer } from './stopAgentRun';
 
 interface FastAction {
-  type: 'launch' | 'search' | 'url';
+  type: 'launch' | 'search' | 'url' | 'summarize';
   commandOrUrl: string;
 }
 
 export function getFastActionCommand(instructions: string, isWindows: boolean): FastAction | null {
   // Strip trailing punctuation (like periods, question marks, commas, etc.)
-  const query = instructions.trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]+$/g, '').trim();
+  const query = instructions.trim().replace(/[.,\/#!$%\^\&\*;:{}=\-_`~()?]+$/g, '').trim();
   
   // Redirect Chrome launching to open google.com directly
   if (/^(?:open|launch|start|run|show|execute)?\s*(google\s+)?chrome$/i.test(query)) {
@@ -63,8 +63,30 @@ export function getFastActionCommand(instructions: string, isWindows: boolean): 
       commandOrUrl: 'https://google.com'
     };
   }
-  
-  // 1. Check for search queries
+
+  // 0. Check for screen summarize / describe requests
+  const summarizeRegex = /^(?:summarize|summarise|describe|tell\s+me\s+about|what['']?s\s+on|what\s+is\s+on|explain|read)\s*(?:the\s+)?(?:screen|this|my\s+screen|what\s+you\s+see|the\s+display|what['']?s\s+happening)?$/i;
+  if (summarizeRegex.test(query)) {
+    return {
+      type: 'summarize',
+      commandOrUrl: query
+    };
+  }
+
+  // 0b. YouTube search (e.g. "search on youtube believer song", "youtube search for cats")
+  const youtubeSearchRegex = /^(?:search\s+on\s+youtube|youtube\s+search|search\s+(?:in|on|for)\s+youtube|search\s+youtube|play\s+on\s+youtube|find\s+on\s+youtube|youtube)\s+(?:for\s+)?(.+)$/i;
+  const youtubeSearchMatch = query.match(youtubeSearchRegex);
+  if (youtubeSearchMatch) {
+    const ytQuery = youtubeSearchMatch[1].trim();
+    if (ytQuery) {
+      return {
+        type: 'url',
+        commandOrUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(ytQuery)}`
+      };
+    }
+  }
+
+  // 1. Check for search queries (Google)
   const searchForRegex = /^(?:search\s+for|google\s+search\s+for|search\s+on\s+google\s+for|google\s+search|google|search)\s+(.+)$/i;
   const searchForMatch = query.match(searchForRegex);
   if (searchForMatch) {
@@ -275,7 +297,79 @@ export const runAgent = async (
     });
 
     try {
-      if (fastAction.type === 'search' || fastAction.type === 'url') {
+      if (fastAction.type === 'summarize') {
+        // Take a screenshot and send to Vertex AI for description
+        setState({
+          ...getState(),
+          currentAction: 'Scanning screen for summarization...',
+        });
+
+        try {
+          const { desktopCapturer: dc } = await import('electron');
+          const sources = await dc.getSources({ types: ['screen'], thumbnailSize: { width: 1920, height: 1080 } });
+          const primarySource = sources[0];
+          if (!primarySource) throw new Error('No screen source available');
+
+          const screenshotBase64 = primarySource.thumbnail.toJPEG(80).toString('base64');
+
+          const summarizePrompt = 'Describe what you see on this screen in 3-5 sentences. Focus on what application is open, what content is visible, and any notable UI elements. Be concise and speak naturally as if explaining to someone who cannot see the screen.';
+
+          // Use Vertex AI client directly with the screenshot for vision-based description
+          const { VertexAI } = await import('@google-cloud/vertexai');
+          const { SettingStore: SS } = await import('@main/store/setting');
+          const { vertexProjectId: vPid, vertexLocation: vLoc } = await import('@main/env');
+          const storeSet = SS.getStore();
+          const pid = storeSet.vertexProjectId || vPid;
+          const loc = storeSet.vertexLocation || vLoc;
+          const modelName = storeSet.vertexChatModelName || storeSet.vertexModelName || 'gemini-2.5-flash';
+
+          const vertex = new VertexAI({ project: pid, location: loc });
+          const model = vertex.getGenerativeModel({ model: modelName });
+          const ssResult = await model.generateContent({
+            contents: [{
+              role: 'user',
+              parts: [
+                { text: summarizePrompt },
+                { inlineData: { mimeType: 'image/jpeg', data: screenshotBase64 } },
+              ],
+            }],
+          });
+
+          const summaryText = ssResult.response.candidates?.[0]?.content?.parts?.[0]?.text || 'I could not describe the screen right now. Please try again.';
+          const cleanSummary = summaryText
+            .replace(/\*\*(.*?)\*\*/g, '$1')
+            .replace(/\*(.*?)\*/g, '$1')
+            .replace(/`(.*?)`/g, '$1')
+            .replace(/#{1,6}\s+/g, '')
+            .replace(/\n+/g, ' ')
+            .trim();
+
+          logger.info(`[runAgent] Screen summarize result: "${cleanSummary.slice(0, 100)}..."`);
+
+          // Broadcast to voice window for TTS playback
+          const { windowManager: wm } = await import('@main/services/windowManager');
+          wm.broadcast('voice:speak-text', cleanSummary);
+
+          setState({
+            ...getState(),
+            status: StatusEnum.END,
+            currentStep: 1,
+            currentAction: 'FastAction completed successfully',
+            messages: [
+              ...(getState().messages || []),
+              {
+                from: 'gpt' as const,
+                value: `Thought: The user asked me to summarize the screen. I took a screenshot and described it: "${cleanSummary.slice(0, 200)}..." Action: finished()`,
+                timing: { start: Date.now(), end: Date.now(), cost: 0 },
+              },
+            ],
+          });
+          return;
+        } catch (ssErr: any) {
+          logger.error('[runAgent] Screen summarize failed:', ssErr);
+          // Fall through to standard VLM agent
+        }
+      } else if (fastAction.type === 'search' || fastAction.type === 'url') {
         await shell.openExternal(fastAction.commandOrUrl);
       } else if (fastAction.type === 'launch') {
         const isProtocol = fastAction.commandOrUrl.endsWith(':') || fastAction.commandOrUrl.startsWith('ms-') || fastAction.commandOrUrl.includes('://');

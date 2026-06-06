@@ -104,7 +104,14 @@ Code-switching: If the user mixes languages (e.g., Hinglish), respond naturally 
 CRITICAL: If the user asks you to perform an action on the computer, open an application, click on something, type something, or run a GUI automation task, you must start your response with:
 [TRIGGER_RUN: <instruction>]
 followed by a brief, friendly verbal confirmation of what you are about to do. Make sure the <instruction> inside the bracket is the clear, actionable natural language command that should be passed to the GUI automation agent (e.g. "open Paint", "search for weather in Tokyo on Chrome", etc.).
-If the user provides a continuous speech input with multiple steps (e.g., "open notepad and type hello, then save it"), consolidate the steps into a single unified instruction sequence (e.g. "[TRIGGER_RUN: open Notepad, type 'hello', and save the file]"). Do not prefix or include TRIGGER_RUN for general questions or conversational replies that do not require executing a computer action.`;
+If the user provides a continuous speech input with multiple steps (e.g., "open notepad and type hello, then save it"), consolidate the steps into a single unified instruction sequence (e.g. "[TRIGGER_RUN: open Notepad, type 'hello', and save the file]"). Do not prefix or include TRIGGER_RUN for general questions or conversational replies that do not require executing a computer action.
+
+Special Fast Actions (use these exact phrasings in TRIGGER_RUN):
+- YouTube search: If the user says "search on YouTube for <query>" or "play <query> on YouTube", use: [TRIGGER_RUN: search on youtube <query>]
+- Screen summarize: If the user says "summarize", "tell me about the screen", "describe what you see", "what's on screen", use: [TRIGGER_RUN: summarize]
+  The system will take a screenshot and describe it back to you.
+- Google search: If the user says "search for <query>" or "google <query>", use: [TRIGGER_RUN: search <query>]
+- App launch: If the user says "open <app>", use: [TRIGGER_RUN: open <app>]`;
 
 
 // ─── Main Chat Function ───────────────────────────────────────────────────────
