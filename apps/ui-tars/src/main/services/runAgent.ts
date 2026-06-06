@@ -53,7 +53,8 @@ interface FastAction {
 }
 
 export function getFastActionCommand(instructions: string, isWindows: boolean): FastAction | null {
-  const query = instructions.trim();
+  // Strip trailing punctuation (like periods, question marks, commas, etc.)
+  const query = instructions.trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]+$/g, '').trim();
   
   // Redirect Chrome launching to open google.com directly
   if (/^(?:open|launch|start|run|show|execute)?\s*(google\s+)?chrome$/i.test(query)) {

@@ -121,3 +121,130 @@ app.on('before-quit', () => {
 cleanupOldLogs().catch((error) => {
   logger.error('Failed to cleanup logs on startup:', error);
 });
+
+// Override console transport to filter and format clean output
+if (log.transports.console) {
+  const originalWrite = log.transports.console.writeFn;
+  log.transports.console.writeFn = (options) => {
+    const { message } = options;
+    const dataStrs = message.data.map((item) => {
+      if (typeof item === 'object' && item !== null) {
+        try {
+          return JSON.stringify(item);
+        } catch {
+          return String(item);
+        }
+      }
+      return String(item);
+    });
+    const fullText = dataStrs.join(' ');
+
+    // 1. Explicitly allow existing [Hi-Bee Live] logs
+    if (fullText.includes('[Hi-Bee Live]')) {
+      originalWrite(options);
+      return;
+    }
+
+    // 2. Intercept and format key user voice & agent run actions
+    if (fullText.includes('[useCloudSTT] Transcription result')) {
+      const transcript = fullText.match(/Transcription result.*:\s*"([^"]+)"/)?.[1] || 
+                         fullText.match(/"([^"]+)"/)?.[1] || '';
+      if (transcript) {
+        originalWrite({
+          ...options,
+          message: {
+            ...message,
+            data: [`\x1b[35m[Hi-Bee Live] 🎙️ User Said: "${transcript}"\x1b[0m`],
+          },
+        });
+      }
+      return;
+    }
+
+    if (fullText.includes('GCP TTS: lang=') || fullText.includes('[useVoiceTTS] GCP TTS')) {
+      const textPart = fullText.match(/text="([^"]+)"/)?.[1] || 
+                       fullText.match(/text:\s*"([^"]+)"/)?.[1] || '';
+      if (textPart) {
+        originalWrite({
+          ...options,
+          message: {
+            ...message,
+            data: [`\x1b[34m[Hi-Bee Live] 🔊 Speaking: "${textPart}"\x1b[0m`],
+          },
+        });
+      }
+      return;
+    }
+
+    if (fullText.includes('[runAgent] Fast Action Match:')) {
+      const actionMatch = fullText.match(/Fast Action Match:\s*(.+)/)?.[1] || '';
+      originalWrite({
+        ...options,
+        message: {
+          ...message,
+          data: [`\x1b[32m[Hi-Bee Live] ⚡ Fast Action: ${actionMatch}\x1b[0m`],
+        },
+      });
+      return;
+    }
+
+    if (fullText.includes('FastAction completed successfully')) {
+      originalWrite({
+        ...options,
+        message: {
+          ...message,
+          data: [`\x1b[32m[Hi-Bee Live] ✓ Fast Action Completed\x1b[0m`],
+        },
+      });
+      return;
+    }
+
+    if (fullText.includes('[onGUIAgentData] status')) {
+      originalWrite({
+        ...options,
+        message: {
+          ...message,
+          data: [`\x1b[36m[Hi-Bee Live] 🧠 VLM Step Status: ${fullText.replace(/\\n/g, ' ')}\x1b[0m`],
+        },
+      });
+      return;
+    }
+
+    if (fullText === 'runAgent') {
+      originalWrite({
+        ...options,
+        message: {
+          ...message,
+          data: [`\x1b[33m[Hi-Bee Live] ⚡ Initializing Agent Run...\x1b[0m`],
+        },
+      });
+      return;
+    }
+
+    if (fullText.includes('[VAD]')) {
+      if (fullText.includes('User started speaking')) {
+        originalWrite({
+          ...options,
+          message: {
+            ...message,
+            data: [`\x1b[33m[Hi-Bee Live] 🎙️ VAD: User started speaking...\x1b[0m`],
+          },
+        });
+      } else if (fullText.includes('Interrupting')) {
+        originalWrite({
+          ...options,
+          message: {
+            ...message,
+            data: [`\x1b[31m[Hi-Bee Live] 🎙️ VAD: User interrupted. Stopping TTS.\x1b[0m`],
+          },
+        });
+      }
+      return;
+    }
+
+    // 3. Keep errors and warnings in their original format so we don't miss issues
+    if (message.level === 'error' || message.level === 'warn') {
+      originalWrite(options);
+    }
+  };
+}

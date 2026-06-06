@@ -71,6 +71,7 @@ function extractCommandAfterCleanWake(fullText: string, cleanWake: string): { ma
 interface UseCloudSTTOptions {
   silenceMs?: number;
   chunkIntervalMs?: number;
+  autoCommit?: boolean;
   onCommit: (transcript: string) => void;
   onInterrupt?: () => void;
   onPermissionDenied?: () => void;
@@ -114,7 +115,8 @@ export function useCloudSTT({
   onInterrupt,
   onPermissionDenied,
   speak,
-}: UseCloudSTTOptions) {
+  autoCommit = true,
+}: UseCloudSTTOptions & { autoCommit?: boolean }) {
   const {
     selectedLanguage,
     setAvatarState,
@@ -125,6 +127,9 @@ export function useCloudSTT({
     pendingConfirmText,
     setPendingConfirmText,
   } = useVoiceStore();
+
+  const autoCommitRef = useRef(autoCommit);
+  useEffect(() => { autoCommitRef.current = autoCommit; }, [autoCommit]);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -540,8 +545,10 @@ export function useCloudSTT({
             if (hasSpoken) {
               silenceSamplesCount++;
               if (silenceSamplesCount >= samplesNeededForSilence) {
-                api.logFromRenderer({ message: `[VAD] Silence detected for ${currentSilenceMs}ms. Committing.` }).catch(() => {});
-                stopListening(true);
+                if (autoCommitRef.current) {
+                  api.logFromRenderer({ message: `[VAD] Silence detected for ${currentSilenceMs}ms. Committing.` }).catch(() => {});
+                  stopListening(true);
+                }
               }
             } else if (!isBackground && totalSamplesCount >= samplesNeededForTimeout) {
               // Foreground timeout if nobody speaks

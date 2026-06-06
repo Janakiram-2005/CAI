@@ -6,7 +6,7 @@
  * live transcript, language/voice selector, and Task KB viewer.
  */
 import { useEffect, useRef, useState } from 'react';
-import { MicOff, Mic, VolumeX, Volume2, ExternalLink, ChevronDown, ChevronUp, X, Power, Keyboard, Send, Bot, Square, Settings, Play, Pause } from 'lucide-react';
+import { Mic, VolumeX, Volume2, ExternalLink, ChevronDown, ChevronUp, X, Power, Send, Bot, Square, Settings, Play, Pause } from 'lucide-react';
 import { useVoiceStore } from '@renderer/store/voiceStore';
 import { RobotAvatar } from './RobotAvatar';
 import { api } from '@renderer/api';
@@ -82,7 +82,6 @@ export function VoicePanel({
     setVoice,
     currentTaskId,
     inputMode,
-    setInputMode,
     voiceWakeupMode,
     voiceWakePhrase,
     setWakeupMode,
@@ -90,12 +89,13 @@ export function VoicePanel({
     volume,
     setVolume,
     isPaused,
+    textInput,
+    setTextInput,
   } = useVoiceStore();
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [taskKB, setTaskKB] = useState<any>(null);
   const [taskExpanded, setTaskExpanded] = useState(false);
-  const [textInput, setTextInput] = useState('');
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -219,32 +219,70 @@ export function VoicePanel({
       </div>
 
       {/* Live transcript bar */}
-      {inputMode === 'audio' && liveTranscript && (
-        <div className="voice-live-bar">
+      {liveTranscript && (
+        <div className="voice-live-bar" style={{ margin: '0 12px 4px 12px', fontSize: '11px', color: '#a78bfa', background: 'rgba(167,139,250,0.05)', padding: '4px 8px', borderRadius: '4px' }}>
           🎙 {liveTranscript}
         </div>
       )}
 
-      {/* Text Input dialog container */}
-      {inputMode === 'text' && (
-        <form onSubmit={handleTextSubmit} className="voice-text-form-container">
-          <input
-            type="text"
-            className="voice-text-input-field"
-            value={textInput}
-            onChange={(e) => setTextInput(e.target.value)}
-            placeholder="Type a message to Hi-Bee..."
-            disabled={avatarState === 'thinking'}
-          />
-          <button
-            type="submit"
-            className="voice-text-send-btn"
-            disabled={!textInput.trim() || avatarState === 'thinking'}
-          >
-            <Send size={12} strokeWidth={1.5} />
-          </button>
-        </form>
-      )}
+      {/* Unified Text & Mic Input Container */}
+      <form onSubmit={handleTextSubmit} className="voice-text-form-container" style={{ margin: '8px 12px', display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.03)', padding: '6px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+        <input
+          type="text"
+          className="voice-text-input-field"
+          value={textInput}
+          onChange={(e) => setTextInput(e.target.value)}
+          placeholder={isListening ? "🎙️ Recording... Speak now..." : "Type or speak to Hi-Bee..."}
+          disabled={avatarState === 'thinking'}
+          style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: '13px', padding: '0 8px' }}
+        />
+        
+        {/* Traditional Mic Button */}
+        <button
+          type="button"
+          className={`voice-text-send-btn ${isListening ? 'listening-pulse active' : ''}`}
+          onClick={onToggleMic}
+          title={isListening ? 'Stop recording & transcribe' : 'Start recording'}
+          style={{
+            background: isListening ? '#ef4444' : 'rgba(255,255,255,0.08)',
+            color: '#fff',
+            border: '1px solid',
+            borderColor: isListening ? '#dc2626' : 'rgba(255,255,255,0.1)',
+            padding: '8px',
+            borderRadius: '6px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            transition: 'all 0.2s'
+          }}
+        >
+          {isListening ? <Square size={12} strokeWidth={1.5} fill="currentColor" /> : <Mic size={12} strokeWidth={1.5} />}
+        </button>
+
+        {/* Send Button */}
+        <button
+          type="submit"
+          className="voice-text-send-btn"
+          disabled={!textInput.trim() || avatarState === 'thinking' || isListening}
+          title="Send message (Enter)"
+          style={{
+            background: 'rgba(99,102,241,0.2)',
+            color: '#c7d2fe',
+            border: '1px solid rgba(99,102,241,0.3)',
+            padding: '8px',
+            borderRadius: '6px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            opacity: (!textInput.trim() || avatarState === 'thinking' || isListening) ? 0.4 : 1,
+            transition: 'all 0.2s'
+          }}
+        >
+          <Send size={12} strokeWidth={1.5} />
+        </button>
+      </form>
 
       {/* Footer / Controls Section */}
       <div className="voice-footer">
@@ -319,23 +357,6 @@ export function VoicePanel({
 
         {/* Actions/Controls Row */}
         <div className="voice-controls-row">
-          <button
-            className={`voice-ctrl-btn ${inputMode === 'text' ? 'active' : ''}`}
-            onClick={() => setInputMode(inputMode === 'audio' ? 'text' : 'audio')}
-            title={inputMode === 'audio' ? 'Switch to text input' : 'Switch to voice input'}
-          >
-            {inputMode === 'audio' ? <Keyboard size={16} strokeWidth={1.5} /> : <Mic size={16} strokeWidth={1.5} />}
-          </button>
-
-          {inputMode === 'audio' && (
-            <button
-              className={`voice-ctrl-btn ${!isListening ? 'active' : ''}`}
-              onClick={onToggleMic}
-              title={isListening ? 'Stop Listening' : 'Start Listening'}
-            >
-              {isListening ? <Mic size={16} strokeWidth={1.5} /> : <MicOff size={16} strokeWidth={1.5} />}
-            </button>
-          )}
 
           {/* Mute toggle */}
           <button

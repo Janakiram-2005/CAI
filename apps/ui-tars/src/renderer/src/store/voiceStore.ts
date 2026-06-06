@@ -96,6 +96,7 @@ interface VoiceStore {
   pendingConfirmText: string | null; // text read out for 'confirming' state
   volume: number;
   isPaused: boolean;
+  textInput: string;
 
   // ── Agent Status (shared with Hi-Bee Live View)
   agentAction: string | null;      // raw action string e.g. "click(x=450, y=320)"
@@ -125,6 +126,7 @@ interface VoiceStore {
   setPendingConfirmText: (text: string | null) => void;
   setVolume: (v: number) => void;
   setIsPaused: (p: boolean) => void;
+  setTextInput: (text: string) => void;
 }
 
 export const useVoiceStore = create<VoiceStore>((set) => ({
@@ -144,6 +146,7 @@ export const useVoiceStore = create<VoiceStore>((set) => ({
   pendingConfirmText: null,
   volume: 1.0,
   isPaused: false,
+  textInput: '',
 
   // Agent status defaults
   agentAction: null,
@@ -177,4 +180,5 @@ export const useVoiceStore = create<VoiceStore>((set) => ({
   setPendingConfirmText: (text) => set({ pendingConfirmText: text }),
   setVolume: (v) => set({ volume: v }),
   setIsPaused: (p) => set({ isPaused: p }),
+  setTextInput: (text) => set({ textInput: text }),
 }));

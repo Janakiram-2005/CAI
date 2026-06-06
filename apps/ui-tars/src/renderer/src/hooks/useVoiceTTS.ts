@@ -55,6 +55,7 @@ export function useVoiceTTS() {
     pendingConfirmText,
     volume,
     setIsPaused,
+    voiceWakeupMode,
   } = useVoiceStore();
 
   const { settings } = useSetting();
@@ -66,11 +67,13 @@ export function useVoiceTTS() {
   const pendingConfirmTextRef = useRef(pendingConfirmText);
   const settingsRef = useRef(settings);
   const selectedLanguageRef = useRef(selectedLanguage);
+  const voiceWakeupModeRef = useRef(voiceWakeupMode);
 
   // Keep refs in sync
   useEffect(() => { pendingConfirmTextRef.current = pendingConfirmText; }, [pendingConfirmText]);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
   useEffect(() => { selectedLanguageRef.current = selectedLanguage; }, [selectedLanguage]);
+  useEffect(() => { voiceWakeupModeRef.current = voiceWakeupMode; }, [voiceWakeupMode]);
 
   // Sync volume with active audio element dynamically
   useEffect(() => {
@@ -142,7 +145,10 @@ export function useVoiceTTS() {
   // ─── Core speak function ─────────────────────────────────────────────────────
   const speak = useCallback(
     async (text: string) => {
-      const nextState = pendingConfirmTextRef.current ? 'confirming' : 'listening';
+      const mode = settingsRef.current?.voiceWakeupMode ?? voiceWakeupModeRef.current;
+      const nextState = pendingConfirmTextRef.current
+        ? 'confirming'
+        : (mode === 'hotkey' ? 'idle' : 'listening');
       if (!text?.trim() || isMuted) {
         setAvatarState(nextState);
         return;
@@ -288,7 +294,10 @@ export function useVoiceTTS() {
     }
     isSpeakingRef.current = false;
     setIsPaused(false);
-    const nextState = pendingConfirmTextRef.current ? 'confirming' : 'listening';
+    const mode = settingsRef.current?.voiceWakeupMode ?? voiceWakeupModeRef.current;
+    const nextState = pendingConfirmTextRef.current
+      ? 'confirming'
+      : (mode === 'hotkey' ? 'idle' : 'listening');
     setAvatarState(nextState);
   }, [setAvatarState, setIsPaused]);
 

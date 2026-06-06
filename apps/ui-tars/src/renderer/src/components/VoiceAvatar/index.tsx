@@ -52,6 +52,8 @@ function VoiceAvatarInner({ settings }: { settings: any }) {
     liveScreenshot,
     setLiveScreenshot,
     pendingConfirmText,
+    setTextInput,
+    voiceWakeupMode,
   } = useVoiceStore();
 
   // ── Global VLM automation store state ────────────────────────────────────
@@ -311,7 +313,17 @@ function VoiceAvatarInner({ settings }: { settings: any }) {
   const { startListening, stopListening, isListening } = useCloudSTT({
     silenceMs: settings?.voiceSilenceMs ?? 1500,
     chunkIntervalMs: 3000,
-    onCommit: handleCommit,
+    autoCommit: (settings?.voiceWakeupMode ?? voiceWakeupMode) !== 'hotkey',
+    onCommit: (transcript) => {
+      const mode = settings?.voiceWakeupMode ?? voiceWakeupMode;
+      if (mode === 'hotkey') {
+        // Set the textInput state instead of submitting
+        setTextInput(transcript);
+        setAvatarState('idle');
+      } else {
+        handleCommit(transcript);
+      }
+    },
     onInterrupt: handleInterrupt,
     onPermissionDenied: handlePermissionDenied,
     speak,
