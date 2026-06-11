@@ -5,9 +5,17 @@
  * Vertex AI service — Gemini 1.5 Flash with Search Grounding.
  * All errors are caught and return a conversational fallback message.
  */
-import { VertexAI, HarmCategory, HarmBlockThreshold } from '@google-cloud/vertexai';
+import {
+  VertexAI,
+  HarmCategory,
+  HarmBlockThreshold,
+} from '@google-cloud/vertexai';
 import { logger } from '@main/logger';
-import { vertexProjectId, vertexLocation, vertexSearchEngineId } from '@main/env';
+import {
+  vertexProjectId,
+  vertexLocation,
+  vertexSearchEngineId,
+} from '@main/env';
 import { SettingStore } from '@main/store/setting';
 import type { Citation } from './mongoService';
 
@@ -27,9 +35,9 @@ export interface VoiceChatResult {
 
 // ─── Fallback phrases (rotated so they don't feel robotic) ───────────────────
 const FALLBACKS = [
-  "I ran into a slight issue trying to do that. Could you rephrase it or give me a bit more detail?",
+  'I ran into a slight issue trying to do that. Could you rephrase it or give me a bit more detail?',
   "Hmm, I didn't quite get that. Could you try saying it differently?",
-  "I had trouble processing that request. Could you try again with a little more context?",
+  'I had trouble processing that request. Could you try again with a little more context?',
   "Something went wrong on my end. Let me know if you'd like to try a different approach.",
 ];
 let fallbackIndex = 0;
@@ -49,11 +57,15 @@ function getVertex(): VertexAI {
 
   if (serviceAccountPath && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
     process.env.GOOGLE_APPLICATION_CREDENTIALS = serviceAccountPath;
-    logger.info(`[Hi-Bee] Using Service Account JSON from settings: ${serviceAccountPath}`);
+    logger.info(
+      `[Hi-Bee] Using Service Account JSON from settings: ${serviceAccountPath}`,
+    );
   }
 
   if (!vertexClient || lastProject !== projectId || lastLocation !== location) {
-    logger.info(`[Hi-Bee] Initializing VertexAI client for project: ${projectId}, location: ${location}`);
+    logger.info(
+      `[Hi-Bee] Initializing VertexAI client for project: ${projectId}, location: ${location}`,
+    );
     vertexClient = new VertexAI({
       project: projectId,
       location: location,
@@ -113,7 +125,6 @@ Special Fast Actions (use these exact phrasings in TRIGGER_RUN):
 - Google search: If the user says "search for <query>" or "google <query>", use: [TRIGGER_RUN: search <query>]
 - App launch: If the user says "open <app>", use: [TRIGGER_RUN: open <app>]`;
 
-
 // ─── Main Chat Function ───────────────────────────────────────────────────────
 
 export async function vertexChat(
@@ -132,7 +143,10 @@ CRITICAL: The user's preferred language is ${language}. You MUST formulate your 
       try {
         activeState = await mongoService.getLatestActiveAgentState();
         if (activeState) {
-          const stepInfo = activeState.lastStepIndex >= 0 ? `Step ${activeState.lastStepIndex + 1}` : 'initial step';
+          const stepInfo =
+            activeState.lastStepIndex >= 0
+              ? `Step ${activeState.lastStepIndex + 1}`
+              : 'initial step';
           systemInstruction += `\n\n[Active GUI Automation Task Context]:
 - Task Instruction: "${activeState.instructions}"
 - Automation Status: ${activeState.status}
@@ -141,12 +155,18 @@ CRITICAL: The user's preferred language is ${language}. You MUST formulate your 
 You have access to this live execution status and current screenshot. If the user asks about the progress, what the automation is doing, or what is currently on the screen, reference this context naturally.`;
         }
       } catch (err) {
-        logger.warn('[vertexChat] Failed to query active agent state context:', err);
+        logger.warn(
+          '[vertexChat] Failed to query active agent state context:',
+          err,
+        );
       }
     }
 
     const storeSettings = SettingStore.getStore();
-    const modelName = storeSettings.vertexChatModelName || storeSettings.vertexModelName || 'gemini-2.5-flash';
+    const modelName =
+      storeSettings.vertexChatModelName ||
+      storeSettings.vertexModelName ||
+      'gemini-2.5-flash';
     const activeProjectId = storeSettings.vertexProjectId || vertexProjectId;
     const canUseGrounding = Boolean(activeProjectId && vertexSearchEngineId);
     const useStreaming = storeSettings.enableStreamingResponse !== false;
@@ -160,16 +180,31 @@ You have access to this live execution status and current screenshot. If the use
         topP: 0.9,
       },
       safetySettings: [
-        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        {
+          category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+        },
       ],
-      ...(canUseGrounding ? { tools: [buildGroundingTool(activeProjectId, vertexSearchEngineId) as any] } : {}),
+      ...(canUseGrounding
+        ? {
+            tools: [
+              buildGroundingTool(activeProjectId, vertexSearchEngineId) as any,
+            ],
+          }
+        : {}),
     });
 
     const userParts: any[] = [{ text: transcript }];
     if (activeState?.lastScreenshotBase64) {
       try {
-        const rawBase64 = activeState.lastScreenshotBase64.replace(/^data:[^;]+;base64,/, '');
+        const rawBase64 = activeState.lastScreenshotBase64.replace(
+          /^data:[^;]+;base64,/,
+          '',
+        );
         userParts.push({
           inlineData: {
             mimeType: 'image/png',
@@ -178,7 +213,10 @@ You have access to this live execution status and current screenshot. If the use
         });
         logger.info('[vertexChat] Attached active screenshot to Gemini query');
       } catch (err) {
-        logger.warn('[vertexChat] Failed to attach screenshot to Gemini query:', err);
+        logger.warn(
+          '[vertexChat] Failed to attach screenshot to Gemini query:',
+          err,
+        );
       }
     }
 
@@ -196,53 +234,87 @@ You have access to this live execution status and current screenshot. If the use
 
     const t0 = Date.now();
     let result;
-    try {
-      if (useStreaming) {
-        // Streaming path: lower first-token latency
-        const streamResult = await model.generateContentStream({ contents });
-        const response = (await streamResult.response);
-        result = { response };
-      } else {
-        result = await model.generateContent({ contents });
-      }
-    } catch (err: any) {
-      const errMsg = err?.message || '';
-      if (
-        errMsg.includes('datastore') ||
-        errMsg.includes('tools') ||
-        errMsg.includes('grounding') ||
-        errMsg.includes('INVALID_ARGUMENT')
-      ) {
-        logger.info('[Hi-Bee] Vertex AI Grounding failed. Retrying without grounding tool...');
-        const fallbackModel = vertex.getGenerativeModel({
-          model: modelName,
-          systemInstruction,
-          generationConfig: {
-            maxOutputTokens: 512,
-            temperature: 0.7,
-            topP: 0.9,
-          },
-          safetySettings: [
-            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-          ],
-        });
-        result = await fallbackModel.generateContent({ contents });
-      } else {
-        throw err;
+    const maxRetries = 5;
+    let lastError: any = null;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        if (useStreaming) {
+          // Streaming path: lower first-token latency
+          const streamResult = await model.generateContentStream({ contents });
+          const response = await streamResult.response;
+          result = { response };
+        } else {
+          result = await model.generateContent({ contents });
+        }
+        break;
+      } catch (err: any) {
+        lastError = err;
+        const errMsg = err?.message || '';
+        if (
+          errMsg.includes('datastore') ||
+          errMsg.includes('tools') ||
+          errMsg.includes('grounding') ||
+          errMsg.includes('INVALID_ARGUMENT')
+        ) {
+          logger.info(
+            '[Hi-Bee] Vertex AI Grounding failed. Retrying without grounding tool...',
+          );
+          const fallbackModel = vertex.getGenerativeModel({
+            model: modelName,
+            systemInstruction,
+            generationConfig: {
+              maxOutputTokens: 512,
+              temperature: 0.7,
+              topP: 0.9,
+            },
+            safetySettings: [
+              {
+                category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+                threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+              },
+              {
+                category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+              },
+            ],
+          });
+          try {
+            result = await fallbackModel.generateContent({ contents });
+            break;
+          } catch (fallbackErr: any) {
+            lastError = fallbackErr;
+          }
+        }
+
+        if (attempt < maxRetries) {
+          const isRateLimit =
+            errMsg.includes('429') ||
+            errMsg.toLowerCase().includes('exhausted') ||
+            errMsg.toLowerCase().includes('too many requests');
+
+          let backoff = Math.min(500 * 2 ** attempt, 4000);
+          if (isRateLimit) {
+            backoff = Math.min(2000 * 2.5 ** attempt, 15000);
+          }
+          logger.warn(
+            `[Hi-Bee] [vertexChat] attempt ${attempt + 1} failed: ${errMsg}. Retry in ${backoff}ms`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, backoff));
+        } else {
+          throw lastError;
+        }
       }
     }
     const response = result.response;
 
     // Extract text
     const rawText =
-      response.candidates?.[0]?.content?.parts?.[0]?.text ||
-      nextFallback();
+      response.candidates?.[0]?.content?.parts?.[0]?.text || nextFallback();
 
     // Extract grounding citations
     const citations: Citation[] = [];
-    const groundingMeta =
-      response.candidates?.[0]?.groundingMetadata as any;
+    const groundingMeta = response.candidates?.[0]?.groundingMetadata as any;
 
     if (groundingMeta?.groundingChunks) {
       for (const chunk of groundingMeta.groundingChunks) {
@@ -263,7 +335,9 @@ You have access to this live execution status and current screenshot. If the use
 
     const latencyMs = Date.now() - t0;
     console.log(`[Hi-Bee] Agent response: "${ttsText}" (${latencyMs}ms)`);
-    logger.info(`[VertexAI] Response (${ttsText.length} chars), citations: ${citations.length}, latency: ${latencyMs}ms`);
+    logger.info(
+      `[VertexAI] Response (${ttsText.length} chars), citations: ${citations.length}, latency: ${latencyMs}ms`,
+    );
 
     return { text: ttsText, citations, latencyMs };
   } catch (err: any) {
