@@ -9,7 +9,7 @@ import json
 from os_dom_engine.win32_api import get_window_rect, focus_window
 from os_dom_engine import ProcessRouter
 from orchestrator.fallback_router import FallbackRouter
-from vision_engine import CoordinateMapper
+from vision_engine import CoordinateMapper, VisualHomingAgent
 from utils import BenchmarkTool
 from utils.screen_capture import ScreenCapture
 from orchestrator.vlm_client import VLMClient, clean_id_token
@@ -105,6 +105,8 @@ class AgentStateMachine:
         self.process_router = ProcessRouter()
         self.tree_broker = self.router.broker
         self.native_bridge = NativeBridge(self.tree_broker.parser_exe_path, self.tree_broker)
+        self.homing_agent = VisualHomingAgent(drift_threshold=10)
+        self.screen_capture = ScreenCapture()
         
     def _check_lock_screen(self) -> bool:
         """Check if the workstation is locked or showing a secure login screen (foreground window is 0)."""
@@ -352,11 +354,14 @@ class AgentStateMachine:
         focus_window(hwnd)
         time.sleep(0.1)
         
-        # Inject click coordinates using Win32 API
-        ctypes.windll.user32.SetCursorPos(x_target, y_target)
-        ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0) # LEFTDOWN
-        time.sleep(0.05)
-        ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0) # LEFTUP
+        # Inject precision click using closed-loop visual homing micro-agent
+        anchor_pt = (x_target, y_target)
+        final_x, final_y = self.execute_precision_click(
+            initial_target_x=x_target,
+            initial_target_y=y_target,
+            element_intent_label=command,
+            anchor_pt=anchor_pt
+        )
         
         self.benchmark.end_phase("Win32 Mouse Injection")
 
@@ -368,6 +373,43 @@ class AgentStateMachine:
         
         return {
             "success": True,
-            "target_coordinate": [x_target, y_target],
+            "target_coordinate": [final_x, final_y],
             "metrics": self.benchmark.get_metrics()
         }
+
+    def execute_precision_click(self, initial_target_x, initial_target_y, element_intent_label, anchor_pt=None):
+        """
+        Execute visual homing for localized region matching prior to input injection.
+        """
+        self.benchmark.start_phase("Precision Homing Cropping")
+        
+        # Take a live high-speed screenshot frame
+        try:
+            master_frame = self.screen_capture.capture_full_screen()
+        except Exception as e:
+            print(f"[PrecisionClick] Screen capture failed: {e}. Falling back to default coordinate.")
+            master_frame = None
+
+        self.benchmark.end_phase("Precision Homing Cropping")
+
+        self.benchmark.start_phase("Closed-Loop Homing Tracer")
+        try:
+            final_x, final_y = self.homing_agent.resolve_precision_click(
+                master_screenshot=master_frame,
+                initial_x=initial_target_x,
+                initial_y=initial_target_y,
+                semantic_label=element_intent_label,
+                anchor_pt=anchor_pt
+            )
+        except Exception as e:
+            print(f"[PrecisionClick] Homing tracer errored: {e}. Degrading gracefully.")
+            final_x, final_y = initial_target_x, initial_y
+        self.benchmark.end_phase("Closed-Loop Homing Tracer")
+
+        # Inject verified high-precision click event
+        ctypes.windll.user32.SetCursorPos(final_x, final_y)
+        ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0) # LEFTDOWN
+        time.sleep(0.05)
+        ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0) # LEFTUP
+        
+        return final_x, final_y
